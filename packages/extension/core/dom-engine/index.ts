@@ -91,12 +91,23 @@ export function computeName(el: Element): string {
 export function isVisible(el: Element): boolean {
   const html = el as HTMLElement;
   // 显式隐藏判定（语义可靠，不依赖浏览器布局引擎，亦兼容 jsdom 测试环境）：
-  // 1) hidden 属性；2) aria-hidden；3) 自身或其祖先的内联 display:none / visibility:hidden。
+  // 1) hidden 属性；2) aria-hidden；3) 自身或其祖先的 display:none / visibility:hidden。
   if (html.hasAttribute('hidden')) return false;
   if (html.getAttribute('aria-hidden') === 'true') return false;
   if (!html.isConnected) return false;
 
-  // 沿祖先链检查显式隐藏（内联样式在真实浏览器与 jsdom 中均可靠）
+  // 快速路径：原生 checkVisibility（Chrome 105+）。
+  // 原生一次性判定自身及祖先的 display/visibility/content-visibility，不走 JS 逐祖先 getComputedStyle，
+  // 避免在遍历大量元素时反复触发样式重算（这是真实浏览器下的主要开销）。
+  if (typeof (html as any).checkVisibility === 'function') {
+    try {
+      return (html as any).checkVisibility({ checkOpacity: false, checkVisibilityCSS: true });
+    } catch {
+      /* 回退到祖先链检查 */
+    }
+  }
+
+  // 回退路径（jsdom / 旧浏览器）：沿祖先链检查显式隐藏
   let node: Element | null = html;
   while (node) {
     const win = node.ownerDocument.defaultView;
@@ -114,14 +125,14 @@ export function isEnabled(el: Element): boolean {
   return true;
 }
 
-export function elementFingerprint(el: Element): string {
+export function elementFingerprint(el: Element, role?: Role, name?: string): string {
   const tag = el.tagName.toLowerCase();
-  const role = computeRole(el);
-  const name = computeName(el);
+  const r = role ?? computeRole(el);
+  const n = name ?? computeName(el);
   const id = (el as HTMLElement).id || '';
   const parent = el.parentElement ? el.parentElement.tagName.toLowerCase() : '';
   const idx = indexAmongSiblings(el);
-  return [tag, role, name, id, parent, idx].join('|');
+  return [tag, r, n, id, parent, idx].join('|');
 }
 
 function collectElements(
@@ -140,20 +151,23 @@ function collectElements(
       if (tag === 'input' && SENSITIVE_INPUT_TYPES.has((node as HTMLInputElement).type || '')) {
         // 跳过密码字段
       } else if (role !== 'generic' || contentEditable) {
-        const ref = 'el_' + simpleHash(elementFingerprint(node));
+        // 语义计算只做一次，避免 elementFingerprint / name / enabled 重复计算
+        const name = computeName(node);
+        const enabled = isEnabled(node);
+        const ref = 'el_' + simpleHash(elementFingerprint(node, role, name));
         into.push({
           ref,
           role,
-          name: computeName(node),
+          name,
           text: visibleTextOf(node),
           placeholder: (node as HTMLInputElement).getAttribute
             ? (node as HTMLInputElement).getAttribute('placeholder') || undefined
             : undefined,
           tag,
           type: (node as HTMLInputElement).type || undefined,
-          disabled: !isEnabled(node),
+          disabled: !enabled,
           visible: isVisible(node),
-          enabled: isEnabled(node),
+          enabled,
           frameIndex,
           inShadowRoot: inShadow || undefined
         });

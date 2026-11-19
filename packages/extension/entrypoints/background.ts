@@ -136,7 +136,8 @@ export default defineBackground(() => {
           value: params?.value,
           text: params?.text,
           key: params?.key,
-          option: params?.option
+          option: params?.option,
+          confirmationGrant: params?.confirmationGrant === true
         };
         return await sendToTab(tabId, 'UBA_PERFORM_ACTION', { action });
       }

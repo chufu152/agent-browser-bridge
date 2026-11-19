@@ -40,6 +40,8 @@ export interface Action {
   text?: string;
   key?: string;
   option?: string;
+  /** 桥接层已完成人工确认后的授权标记；为 true 时跳过本地高风险检查 */
+  confirmationGrant?: boolean;
 }
 
 export interface ActionResult {
@@ -64,8 +66,8 @@ function focusElement(el: Element): void {
   (el as HTMLElement).focus();
 }
 
-function click(el: Element): ActionResult {
-  if (isHighRiskText(computeName(el)) || isHighRiskText(visibleTextOf(el))) {
+function click(el: Element, grant = false): ActionResult {
+  if (!grant && (isHighRiskText(computeName(el)) || isHighRiskText(visibleTextOf(el)))) {
     return {
       ok: false,
       errorType: 'CONFIRMATION_REQUIRED',
@@ -172,7 +174,7 @@ export function perform(
   }
 
   switch (action.type) {
-    case 'click': return click(el);
+    case 'click': return click(el, action.confirmationGrant);
     case 'fill': return fill(el, action.value as string);
     case 'type': return typeText(el, action.text as string);
     case 'clear': return clear(el);

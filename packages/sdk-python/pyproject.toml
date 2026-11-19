@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uba-sdk"
+version = "0.1.0"
+description = "Universal Browser Agent Python SDK"
+requires-python = ">=3.9"
+dependencies = ["websocket-client>=1.6.0"]
+
+[tool.setuptools]
+packages = ["uba_sdk"]

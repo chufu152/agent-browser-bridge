@@ -33,10 +33,17 @@ export function visibleTextOf(el: Element): string {
   return (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
-function indexAmongSiblings(el: Element): number {
-  if (!el.parentElement) return 0;
-  const same = Array.from(el.parentElement.children).filter((c) => c.tagName === el.tagName);
-  return same.indexOf(el);
+/** 从根到元素的路径（每级 tag + 在所有子节点中的下标），保证唯一且相对稳定 */
+function domPath(el: Element): string {
+  const parts: string[] = [];
+  let node: Element | null = el;
+  const docEl = el.ownerDocument ? el.ownerDocument.documentElement : null;
+  while (node && node !== docEl && node.parentElement) {
+    const idx = Array.prototype.indexOf.call(node.parentElement.children, node);
+    parts.unshift(node.tagName.toLowerCase() + '[' + idx + ']');
+    node = node.parentElement;
+  }
+  return parts.join('/');
 }
 
 export function computeRole(el: Element): Role {
@@ -130,9 +137,8 @@ export function elementFingerprint(el: Element, role?: Role, name?: string): str
   const r = role ?? computeRole(el);
   const n = name ?? computeName(el);
   const id = (el as HTMLElement).id || '';
-  const parent = el.parentElement ? el.parentElement.tagName.toLowerCase() : '';
-  const idx = indexAmongSiblings(el);
-  return [tag, r, n, id, parent, idx].join('|');
+  const path = domPath(el);
+  return [tag, r, n, id, path].join('|');
 }
 
 function collectElements(

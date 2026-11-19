@@ -1,5 +1,8 @@
 // Bridge 主入口 — 组装认证、会话、去重、审计、确认、事件、路由、WebSocket 与 Native Messaging。
 
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { TokenManager } from './auth/index';
 import { SessionManager } from './session/index';
 import { OperationStore } from './dedup/index';
@@ -11,6 +14,28 @@ import { NativeMessagingTransport } from './native-messaging/index';
 import { createWebSocketServer, type WebSocketServerHandle } from './websocket/server';
 import type { ExtensionTransport } from './transport/index';
 import type { EventEnvelope } from './events/index';
+
+interface AgentConfig {
+  agentId: string;
+  token: string;
+}
+
+/** 读取预授权 Agent 配置（~/.uba/agents.json），配置缺失或损坏时返回空 */
+function loadAgentsConfig(): AgentConfig[] {
+  const file = process.env.UBA_AGENTS_FILE ?? join(homedir(), '.uba', 'agents.json');
+  try {
+    if (!existsSync(file)) return [];
+    const raw = JSON.parse(readFileSync(file, 'utf-8'));
+    if (Array.isArray(raw?.agents)) {
+      return raw.agents.filter(
+        (a: any) => typeof a?.agentId === 'string' && typeof a?.token === 'string'
+      );
+    }
+  } catch {
+    /* 配置损坏时静默降级 */
+  }
+  return [];
+}
 
 export interface Bridge {
   tokens: TokenManager;
@@ -56,6 +81,9 @@ export function startBridge(opts: { host?: string; port?: number; verbose?: bool
   const bridge = createBridge();
   const host = opts.host ?? '127.0.0.1';
   const port = opts.port ?? Number(process.env.UBA_WS_PORT ?? 3000);
+
+  // 预授权 Agent：从配置文件导入 token（让外部 Agent 免交互接入）
+  loadAgentsConfig().forEach((a) => bridge.tokens.register(a.agentId, a.token));
 
   // 南向：Native Messaging
   const nm = new NativeMessagingTransport();

@@ -22,6 +22,13 @@ export class TokenManager {
     return raw;
   }
 
+  /** 导入预授权 token（来自配置文件，用于让外部 Agent 免交互接入） */
+  register(agentId: string, rawToken: string): void {
+    const tokenHash = this.hash(rawToken);
+    this.byAgent.set(agentId, { agentId, tokenHash, createdAt: Date.now() });
+    this.byHash.set(tokenHash, agentId);
+  }
+
   /** 验证原始 token，成功返回 agentId，失败返回 null（不区分“不存在”与“错误”） */
   verify(rawToken: string): string | null {
     const tokenHash = this.hash(rawToken);

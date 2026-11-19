@@ -29,8 +29,9 @@ function cssEscape(s: string): string {
   return s.replace(/([^a-zA-Z0-9_-])/g, '\\$1');
 }
 
-export function visibleTextOf(el: Element): string {
-  return (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+export function visibleTextOf(el: Element, maxLen = 200): string {
+  const raw = (el.textContent || '').replace(/\s+/g, ' ').trim();
+  return maxLen > 0 ? raw.slice(0, maxLen) : raw;
 }
 
 /** 从根到元素的路径（每级 tag + 在所有子节点中的下标），保证唯一且相对稳定 */
@@ -68,7 +69,7 @@ export function computeRole(el: Element): Role {
   return 'generic';
 }
 
-export function computeName(el: Element): string {
+export function computeName(el: Element, maxLen = 200): string {
   const html = el as HTMLElement;
   const doc = el.ownerDocument;
   const ariaLabel = html.getAttribute('aria-label');
@@ -90,7 +91,8 @@ export function computeName(el: Element): string {
   }
   if (tag === 'img') return (el as HTMLImageElement).alt || '';
   if (el.childNodes.length === 1 && el.childNodes[0].nodeType === Node.TEXT_NODE) {
-    return (el.textContent || '').trim().slice(0, 200);
+    const raw = (el.textContent || '').trim();
+    return maxLen > 0 ? raw.slice(0, maxLen) : raw;
   }
   return '';
 }
@@ -146,7 +148,8 @@ function collectElements(
   into: ElementDescriptor[],
   frameIndex: number,
   refMap?: Map<string, Element>,
-  inShadowRoot = false
+  inShadowRoot = false,
+  maxTextLength = 200
 ): void {
   const walk = (node: Element, inShadow: boolean): void => {
     const tag = node.tagName.toLowerCase();
@@ -158,14 +161,14 @@ function collectElements(
         // 跳过密码字段
       } else if (role !== 'generic' || contentEditable) {
         // 语义计算只做一次，避免 elementFingerprint / name / enabled 重复计算
-        const name = computeName(node);
+        const name = computeName(node, maxTextLength);
         const enabled = isEnabled(node);
         const ref = 'el_' + simpleHash(elementFingerprint(node, role, name));
         into.push({
           ref,
           role,
           name,
-          text: visibleTextOf(node),
+          text: visibleTextOf(node, maxTextLength),
           placeholder: (node as HTMLInputElement).getAttribute
             ? (node as HTMLInputElement).getAttribute('placeholder') || undefined
             : undefined,
@@ -238,9 +241,9 @@ export interface SnapshotResult {
   truncated: boolean;
 }
 
-export function buildSnapshot(doc: Document = document): SnapshotResult {
+export function buildSnapshot(doc: Document = document, options: { maxTextLength?: number } = {}): SnapshotResult {
   const elements: ElementDescriptor[] = [];
-  collectElements(doc, elements, 0);
+  collectElements(doc, elements, 0, undefined, false, options.maxTextLength ?? 200);
 
   const MAX = 5000;
   const truncated = elements.length > MAX;

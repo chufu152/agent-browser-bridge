@@ -29,6 +29,23 @@ export default defineContentScript({
       return snap;
     }
 
+    // 获取某元素（或整页）的完整文本：ref / selector / 默认 body，保留换行
+    function getText(payload?: any) {
+      const { ref, selector, maxLength } = payload || {};
+      let el: Element | null = null;
+      if (ref) el = resolveRef(ref);
+      else if (selector) el = document.querySelector(selector);
+      else el = document.body;
+      if (!el) return { ok: false, errorType: 'ELEMENT_NOT_FOUND', error: 'Element not found' };
+      let text = el.textContent || '';
+      text = text.replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+      const totalLength = text.length;
+      if (maxLength && maxLength > 0 && text.length > maxLength) {
+        text = text.slice(0, maxLength);
+      }
+      return { ok: true, result: { text, length: totalLength, truncated: totalLength > text.length } };
+    }
+
     // 观察器：变化时转发给 service worker
     const observer = createObserver(
       document,
@@ -67,6 +84,10 @@ export default defineContentScript({
         switch (type) {
           case 'UBA_GET_SNAPSHOT': {
             sendResponse({ ok: true, result: getSnapshot(payload?.options) });
+            break;
+          }
+          case 'UBA_GET_TEXT': {
+            sendResponse(getText(payload));
             break;
           }
           case 'UBA_PERFORM_ACTION': {

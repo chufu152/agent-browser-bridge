@@ -26,6 +26,7 @@ export function computeVersion(raw: SnapshotResult): string {
 export interface SnapshotOptions {
   sinceVersion?: string;
   maxElements?: number;
+  maxTextLength?: number;
 }
 
 export interface SnapshotEngine {
@@ -38,7 +39,7 @@ export function createSnapshotEngine(doc: Document): SnapshotEngine {
   return {
     getSnapshot(options) {
       const opts = options || {};
-      const raw = buildSnapshot(doc);
+      const raw = buildSnapshot(doc, { maxTextLength: opts.maxTextLength });
 
       if (opts.sinceVersion && currentVersion && opts.sinceVersion === currentVersion) {
         return {

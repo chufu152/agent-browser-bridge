@@ -12,12 +12,27 @@ export interface ToolDef {
 export const TOOLS: ToolDef[] = [
   {
     name: 'browser_get_snapshot',
-    description: '获取指定标签页的结构化页面快照（地址、标题、可交互元素、页面版本）。',
+    description: '获取指定标签页的结构化页面快照（地址、标题、可交互元素、页面版本）。maxTextLength 控制每个元素文本的最大长度，0 表示不截断。',
     inputSchema: {
       type: 'object',
       properties: {
         tabId: { type: 'number', description: '标签页 ID' },
-        maxElements: { type: 'number', description: '最大元素数，可选' }
+        maxElements: { type: 'number', description: '最大元素数，可选' },
+        maxTextLength: { type: 'number', description: '每个元素文本最大长度，0 表示不截断，默认 200' }
+      },
+      required: ['tabId']
+    }
+  },
+  {
+    name: 'browser_get_text',
+    description: '获取某个元素（按 ref 或 selector）或整个页面的完整文本内容（保留换行）。用于读取被快照截断的长文本，如题目、文章等。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tabId: { type: 'number', description: '标签页 ID' },
+        ref: { type: 'string', description: '元素引用（来自快照），可选' },
+        selector: { type: 'string', description: 'CSS 选择器，可选' },
+        maxLength: { type: 'number', description: '最大返回字符数，0 或不填表示不截断' }
       },
       required: ['tabId']
     }
@@ -114,8 +129,14 @@ export async function dispatchTool(client: BrowserClient, name: string, args: Re
   const tabId = args.tabId as number;
   const locator = args.locator as Locator | undefined;
   switch (name) {
-    case 'browser_get_snapshot':
-      return client.getSnapshot(tabId, args.maxElements ? { maxElements: args.maxElements } : undefined);
+    case 'browser_get_snapshot': {
+      const options: Record<string, unknown> = {};
+      if (args.maxElements) options.maxElements = args.maxElements;
+      if (typeof args.maxTextLength === 'number') options.maxTextLength = args.maxTextLength;
+      return client.getSnapshot(tabId, Object.keys(options).length ? options : undefined);
+    }
+    case 'browser_get_text':
+      return client.getText(tabId, { ref: args.ref, selector: args.selector, maxLength: args.maxLength });
     case 'browser_get_tabs':
       return client.getTabs();
     case 'browser_get_active_tab':

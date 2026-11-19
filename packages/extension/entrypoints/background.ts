@@ -48,7 +48,7 @@ export default defineBackground(() => {
         return {
           protocolVersion: '1.0',
           capabilities: [
-            'browser.getSnapshot', 'browser.getTabs', 'browser.getActiveTab',
+            'browser.getSnapshot', 'browser.getTabs', 'browser.getActiveTab', 'browser.getText',
             'browser.createTab', 'browser.closeTab', 'browser.switchTab',
             'page.goto', 'page.back', 'page.forward', 'page.reload',
             'page.getUrl', 'page.getTitle',
@@ -61,6 +61,10 @@ export default defineBackground(() => {
 
       case 'browser.getSnapshot': {
         return await sendToTab(tabId, 'UBA_GET_SNAPSHOT', { options: params?.options });
+      }
+
+      case 'browser.getText': {
+        return await sendToTab(tabId, 'UBA_GET_TEXT', { ref: params?.ref, selector: params?.selector, maxLength: params?.maxLength });
       }
 
       case 'browser.getTabs': {

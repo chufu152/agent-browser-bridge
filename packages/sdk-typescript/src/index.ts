@@ -155,6 +155,10 @@ export class BrowserClient {
     return this.callWithSession('browser.getSnapshot', { tabId, options }) as Promise<Snapshot>;
   }
 
+  async getText(tabId: number, options?: { ref?: string; selector?: string; maxLength?: number }): Promise<unknown> {
+    return this.callWithSession('browser.getText', { tabId, ...(options ?? {}) });
+  }
+
   async getTabs(): Promise<{ tabs: unknown[] }> {
     return this.callWithSession('browser.getTabs') as Promise<{ tabs: unknown[] }>;
   }

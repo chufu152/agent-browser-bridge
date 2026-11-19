@@ -21,19 +21,21 @@ document.addEventListener('DOMContentLoaded', () => {
   // 检查内容脚本可用性
   currentTabId().then(async (tabId) => {
     if (tabId === undefined) return;
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    const url = tab?.url || '';
+    const isSpecial = /^(chrome|edge|about|chrome-extension|extension|moz-extension):/.test(url);
     try {
       const resp = await chrome.tabs.sendMessage(tabId, { type: 'UBA_PING', payload: {} });
       if (resp?.ok) {
         dot.classList.remove('off');
         statusText.textContent = '当前页已注入';
-      } else {
-        dot.classList.add('off');
-        statusText.textContent = '当前页未注入（特殊页面）';
+        return;
       }
     } catch {
-      dot.classList.add('off');
-      statusText.textContent = '当前页未注入（特殊页面）';
+      /* 无接收者：特殊页面或页面在插件加载前已打开 */
     }
+    dot.classList.add('off');
+    statusText.textContent = isSpecial ? '当前页未注入（特殊页面）' : '当前页未注入（请刷新页面）';
   });
 
   document.getElementById('test-ping')!.addEventListener('click', async () => {

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>UBA 标准测试页 - 基础控件</title>
+    <style>
+      body { font-family: sans-serif; padding: 24px; max-width: 720px; }
+      .hidden { display: none; }
+      .box { border: 1px solid #ccc; border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+      #result { margin-top: 12px; padding: 8px; background: #f5f5f5; }
+    </style>
+  </head>
+  <body>
+    <h1>基础控件页</h1>
+
+    <div class="box">
+      <h2>表单</h2>
+      <label for="search">搜索</label>
+      <input id="search" type="text" placeholder="请输入关键词" />
+      <button id="search-btn" aria-label="搜索">搜索</button>
+      <button id="disabled-btn" disabled>禁用按钮</button>
+      <button hidden>隐藏按钮</button>
+    </div>
+
+    <div class="box">
+      <h2>选择控件</h2>
+      <label for="fruit">水果</label>
+      <select id="fruit">
+        <option value="apple">苹果</option>
+        <option value="banana">香蕉</option>
+        <option value="cherry">樱桃</option>
+      </select>
+      <br />
+      <label><input type="checkbox" id="agree" /> 同意条款</label>
+      <br />
+      <label><input type="radio" name="gender" value="male" /> 男</label>
+      <label><input type="radio" name="gender" value="female" /> 女</label>
+    </div>
+
+    <div class="box">
+      <h2>多行输入</h2>
+      <label for="note">备注</label>
+      <textarea id="note" placeholder="请输入备注"></textarea>
+    </div>
+
+    <div class="box">
+      <h2>交互结果</h2>
+      <button id="submit" aria-label="提交">提交</button>
+      <div id="result"></div>
+    </div>
+
+    <script>
+      document.getElementById('submit').addEventListener('click', () => {
+        document.getElementById('result').textContent =
+          '提交成功: ' + document.getElementById('search').value;
+      });
+      document.getElementById('search-btn').addEventListener('click', () => {
+        document.getElementById('result').textContent =
+          '搜索: ' + document.getElementById('search').value;
+      });
+    </script>
+  </body>
+</html>

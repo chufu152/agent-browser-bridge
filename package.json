@@ -1,0 +1,18 @@
+{
+  "name": "universal-browser-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Universal Browser Agent - model-agnostic browser control infrastructure",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w packages/extension",
+    "dev": "npm run dev -w packages/extension",
+    "test": "npm run test -w packages/extension",
+    "typecheck": "npm run typecheck -w packages/extension"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

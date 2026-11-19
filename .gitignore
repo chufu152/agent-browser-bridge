@@ -13,3 +13,14 @@
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# 依赖与构建产物
+node_modules/
+dist/
+.output/
+packages/*/node_modules/
+*.tsbuildinfo
+.DS_Store
+
+# WXT 自动生成
+.wxt/

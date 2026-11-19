@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>UBA 标准测试页 - 敏感与高风险</title>
+    <style>
+      body { font-family: sans-serif; padding: 24px; max-width: 720px; }
+      .box { border: 1px solid #ccc; border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+    </style>
+  </head>
+  <body>
+    <h1>敏感与高风险页</h1>
+
+    <div class="box">
+      <h2>登录表单（含密码字段，仅测试，不使用真实凭据）</h2>
+      <label for="username">用户名</label>
+      <input id="username" type="text" />
+      <label for="password">密码</label>
+      <input id="password" type="password" />
+    </div>
+
+    <div class="box">
+      <h2>高风险按钮</h2>
+      <button aria-label="确认支付">确认支付</button>
+      <button aria-label="删除账号">删除账号</button>
+      <button aria-label="发布内容">发布内容</button>
+    </div>
+
+    <script>
+      // 仅为测试，无真实业务
+    </script>
+  </body>
+</html>

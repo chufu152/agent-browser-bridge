@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>UBA 标准测试页 - 动态与歧义</title>
+    <style>
+      body { font-family: sans-serif; padding: 24px; max-width: 720px; }
+      .box { border: 1px solid #ccc; border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+    </style>
+  </head>
+  <body>
+    <h1>动态与歧义页</h1>
+
+    <div class="box">
+      <h2>歧义元素（多个同名按钮）</h2>
+      <button aria-label="保存">保存</button>
+      <button aria-label="保存">保存</button>
+      <button aria-label="保存">保存</button>
+    </div>
+
+    <div class="box">
+      <h2>动态内容</h2>
+      <button id="add-btn">添加元素</button>
+      <div id="dynamic-container"></div>
+    </div>
+
+    <div class="box">
+      <h2>延迟文本</h2>
+      <button id="load-text">加载文本</button>
+      <div id="text-container">初始文本</div>
+    </div>
+
+    <script>
+      let counter = 0;
+      document.getElementById('add-btn').addEventListener('click', () => {
+        counter++;
+        const el = document.createElement('button');
+        el.textContent = '动态按钮 ' + counter;
+        el.id = 'dyn-' + counter;
+        document.getElementById('dynamic-container').appendChild(el);
+      });
+      document.getElementById('load-text').addEventListener('click', () => {
+        setTimeout(() => {
+          document.getElementById('text-container').textContent = '已更新文本';
+        }, 500);
+      });
+    </script>
+  </body>
+</html>

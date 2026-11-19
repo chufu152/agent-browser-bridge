@@ -24,6 +24,8 @@ export class NativeMessagingTransport implements ExtensionTransport {
     private readonly stdout: Writable = process.stdout,
     private readonly timeoutMs = 15000
   ) {
+    // stdout 是原生消息协议通道，浏览器可能随时断开；吞掉 EPIPE 等错误避免进程崩溃
+    this.stdout.on('error', () => {});
     this.stdin.on('data', (chunk: Buffer) => this.onData(chunk));
     this.stdin.on('end', () => this.emitDisconnect());
     this.stdin.on('error', () => this.emitDisconnect());

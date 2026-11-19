@@ -28,3 +28,6 @@ packages/*/node_modules/
 # UBA 本地生成/用户相关
 uba-extension-id.txt
 packages/bridge/native-host/generated/
+
+# UBA 桥接服务诊断日志
+packages/bridge/native-host/bridge-*.log

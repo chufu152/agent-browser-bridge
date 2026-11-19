@@ -99,10 +99,12 @@ export function startBridge(opts: { host?: string; port?: number; verbose?: bool
     }
   });
 
+  // 注意：日志一律走 stderr（console.error），stdout 只用于原生消息协议帧，
+  // 否则被浏览器作为原生消息 host 拉起时，stdout 混入日志会污染协议导致断管。
   if (opts.verbose !== false) {
-    console.log(`[uba-bridge] WebSocket listening on ws://${host}:${port}`);
-    console.log('[uba-bridge] Native messaging channel on stdin/stdout');
-    console.log('[uba-bridge] registered agents:', bridge.tokens.listAgents().join(', ') || '(none)');
+    console.error(`[uba-bridge] WebSocket listening on ws://${host}:${port}`);
+    console.error('[uba-bridge] Native messaging channel on stdin/stdout');
+    console.error('[uba-bridge] registered agents:', bridge.tokens.listAgents().join(', ') || '(none)');
   }
 
   handle.server.on('error', (e) => console.error('[uba-bridge] websocket error', e));

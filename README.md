@@ -16,8 +16,8 @@
 | M1 | 浏览器控制核心 | ✅ 已完成（`packages/extension/`） |
 | M2 | 本地通信系统 | ✅ 已完成（`packages/bridge/`） |
 | M3 | 通用 Agent 接入 | ✅ 已完成（`packages/mcp-server/`、`sdk-typescript/`、`sdk-python/`） |
-| M4 | 性能与规模优化 | 进行中 |
-| M5 | 高级能力与发布准备 | 待开始 |
+| M4 | 性能与规模优化 | ✅ 已完成（快照缓存/批量/智能等待/限流/基准） |
+| M5 | 高级能力与发布准备 | 进行中 |
 
 ## 目录结构
 

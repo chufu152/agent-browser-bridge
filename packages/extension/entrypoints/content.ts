@@ -2,7 +2,7 @@
 // 装配顺序：dom → locator → snapshot → observer → actions（引擎均为纯函数模块）。
 // 挂载到 window.UBA 隔离命名空间，避免与站点脚本冲突。
 
-import { buildSnapshot, elementFingerprint } from '../core/dom-engine/index';
+import { buildSnapshot, buildRefMap } from '../core/dom-engine/index';
 import { locate, find } from '../core/locator/index';
 import { createSnapshotEngine } from '../core/snapshot/index';
 import { createObserver } from '../core/observer/index';
@@ -13,7 +13,7 @@ export default defineContentScript({
   runAt: 'document_idle',
   main() {
     // ref -> element 映射（绑定当前文档与元素身份）
-    const refMap = new Map<string, Element>();
+    let refMap = new Map<string, Element>();
     const resolveRef = (ref: string): Element | null => {
       const cached = refMap.get(ref);
       if (cached && cached.isConnected) return cached;
@@ -22,31 +22,11 @@ export default defineContentScript({
 
     const snapshotEngine = createSnapshotEngine(document);
 
-    // 使用 snapshot 引擎，并在首次 getSnapshot 时重建 refMap
+    // 获取快照并同步重建 refMap（单次遍历 O(n)）
     function getSnapshot(options?: any) {
       const snap = snapshotEngine.getSnapshot(options);
-      // 重建 ref 映射：为每个元素按指纹建立映射
-      refMap.clear();
-      const all = Array.from(document.querySelectorAll('*'));
-      for (const d of snap.elements) {
-        if (!d.ref) continue;
-        const match = all.find((el) => {
-          const fp = elementFingerprint(el);
-          // ref 是 'el_' + hash(fp)；这里重新计算比对
-          const hash = simpleHash(fp);
-          return d.ref === 'el_' + hash;
-        });
-        if (match) refMap.set(d.ref, match);
-      }
+      refMap = buildRefMap(document);
       return snap;
-    }
-
-    function simpleHash(str: string): string {
-      let h = 5381;
-      for (let i = 0; i < str.length; i++) {
-        h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
-      }
-      return h.toString(36);
     }
 
     // 观察器：变化时转发给 service worker

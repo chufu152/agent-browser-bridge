@@ -8,6 +8,8 @@ import { AuditLog } from '../audit/index';
 import { ConfirmationManager } from '../confirm/index';
 import { EventBus, type EventType } from '../events/index';
 import { classifyRisk, describeRisk, type RiskLevel } from '../risk/index';
+import { RateLimiter } from '../ratelimit/index';
+import { SmartWait } from '../smart-wait/index';
 import type { ExtensionTransport } from '../transport/index';
 
 export interface ConnectParams {
@@ -63,7 +65,12 @@ interface SessionRef {
 }
 
 export class JsonRpcRouter {
-  constructor(private readonly deps: RouterDeps) {}
+  private readonly rateLimiter = new RateLimiter();
+  private readonly smartWait: SmartWait;
+
+  constructor(private readonly deps: RouterDeps) {
+    this.smartWait = new SmartWait(() => deps.getTransport());
+  }
 
   async handle(raw: unknown): Promise<RouteResult> {
     if (!raw || typeof raw !== 'object') {
@@ -97,11 +104,27 @@ export class JsonRpcRouter {
     if (!session) return this.err(id, -32007, 'SESSION_EXPIRED', 'Session is invalid or expired');
     const sessionRef: SessionRef = { agentId: session.agentId, sessionId };
 
+    // 速率限制
+    const rl = this.rateLimiter.check(sessionId);
+    if (!rl.allowed) {
+      return this.err(id, -32010, 'RATE_LIMITED', 'Rate limit exceeded', { retryAfterMs: rl.retryAfterMs });
+    }
+
     // 本地方法（不转发插件）
     if (msg.method === 'browser.getOperation') return this.localGetOperation(id, params, sessionRef);
     if (msg.method === 'page.subscribe') return this.localSubscribe(id, params, sessionRef);
     if (msg.method === 'page.unsubscribe') return this.localUnsubscribe(id, params, sessionRef);
     if (msg.method === 'browser.getEvents') return this.localGetEvents(id, params, sessionRef);
+
+    // 智能等待（桥接层轮询）
+    if (msg.method === 'page.waitForSelector' || msg.method === 'page.waitForText' || msg.method === 'page.waitForNavigation') {
+      return this.handleWait(msg, params, sessionRef);
+    }
+
+    // 批量执行
+    if (msg.method === 'browser.batch') {
+      return this.handleBatch(msg, params, sessionRef);
+    }
 
     // 写方法：风险 + 确认 + 去重
     if (WRITE_METHODS.has(msg.method)) {
@@ -137,6 +160,114 @@ export class JsonRpcRouter {
   private localGetEvents(id: string | number | null, params: Record<string, unknown>, session: SessionRef): RouteResult {
     const res = this.deps.events.getEvents(session.sessionId, params.cursor as string | undefined, (params.limit as number) ?? 100);
     return { jsonrpc: '2.0', id, result: res };
+  }
+
+  // ---------------- 智能等待 ----------------
+
+  private async handleWait(
+    msg: { id?: string | number; method: string },
+    params: Record<string, unknown>,
+    session: SessionRef
+  ): Promise<RouteResult> {
+    const id = msg.id ?? null;
+    const tabId = params.tabId as number;
+    if (tabId === undefined) return this.err(id, -32602, 'INVALID_PARAMS', 'tabId is required');
+    const opts = { tabId, sessionId: session.sessionId, timeoutMs: params.timeoutMs as number | undefined, pollMs: params.pollMs as number | undefined };
+    try {
+      let result;
+      if (msg.method === 'page.waitForSelector') result = await this.smartWait.waitForSelector(opts, (params.locator ?? {}) as Record<string, unknown>);
+      else if (msg.method === 'page.waitForText') result = await this.smartWait.waitForText(opts, params.text as string);
+      else result = await this.smartWait.waitForNavigation(opts, params.fromUrl as string);
+      if (!result.matched) {
+        return this.err(id, -32003, 'OPERATION_TIMEOUT', 'Wait condition not met within timeout', { elapsedMs: result.elapsedMs });
+      }
+      return { jsonrpc: '2.0', id, result };
+    } catch {
+      return this.err(id, -32012, 'BRIDGE_UNAVAILABLE', 'Extension is not connected');
+    }
+  }
+
+  // ---------------- 批量执行 ----------------
+
+  private async handleBatch(
+    msg: { id?: string | number },
+    params: Record<string, unknown>,
+    session: SessionRef
+  ): Promise<RouteResult> {
+    const id = msg.id ?? null;
+    const operationId = params.operationId as string | undefined;
+    if (!operationId) return this.err(id, -32602, 'INVALID_PARAMS', 'operationId is required');
+    const tabId = params.tabId as number;
+    const actions = Array.isArray(params.actions) ? (params.actions as any[]) : [];
+    const stopOnError = params.stopOnError !== false;
+
+    const transport = this.deps.getTransport();
+    if (!transport) return this.err(id, -32012, 'BRIDGE_UNAVAILABLE', 'Extension is not connected');
+
+    const results: Array<Record<string, unknown>> = [];
+    let stopped = false;
+
+    for (let i = 0; i < actions.length; i++) {
+      if (stopped) {
+        results.push({ index: i, status: 'skipped' });
+        continue;
+      }
+      const action = actions[i] as any;
+      const method = methodForAction(action?.type);
+      if (!method) {
+        results.push({ index: i, status: 'failed', error: { errorType: 'INVALID_PARAMS', message: 'Unknown action type' } });
+        if (stopOnError) stopped = true;
+        continue;
+      }
+
+      // 逐动作风险分类（前序操作可能改变后续风险）
+      const risk = classifyRisk(method, { locator: action.locator, tabId });
+      if (risk === 'high') {
+        results.push({
+          index: i,
+          status: 'blocked',
+          error: { errorType: 'CONFIRMATION_REQUIRED', message: 'High-risk action requires separate submission', requiresSeparateSubmission: true }
+        });
+        stopped = true;
+        continue;
+      }
+
+      const subOpId = `${operationId}_${i}`;
+      try {
+        const res = await transport.send({
+          method,
+          params: {
+            sessionId: session.sessionId,
+            tabId,
+            operationId: subOpId,
+            locator: action.locator,
+            value: action.value,
+            text: action.text,
+            key: action.key,
+            option: action.option
+          }
+        });
+        const norm = normalizePluginResult(res);
+        if (norm.error) {
+          results.push({ index: i, status: 'failed', error: norm.error });
+          if (stopOnError) stopped = true;
+        } else {
+          results.push({ index: i, status: 'completed', result: norm.result });
+        }
+      } catch (e) {
+        results.push({ index: i, status: 'failed', error: { errorType: 'BRIDGE_UNAVAILABLE', message: String(e) } });
+        if (stopOnError) stopped = true;
+      }
+    }
+
+    const completedCount = results.filter((r) => r.status === 'completed').length;
+    const status = completedCount === results.length ? 'completed' : completedCount > 0 ? 'partial' : 'failed';
+
+    return {
+      jsonrpc: '2.0',
+      id,
+      result: { operationId, tabId, status, transactional: false, actions: results }
+    };
   }
 
   // ---------------- 写方法：风险 + 确认 + 去重 ----------------
@@ -314,6 +445,22 @@ export class JsonRpcRouter {
 interface NormalizedResult {
   result?: unknown;
   error?: { errorType: string; message?: string };
+}
+
+function methodForAction(type: string | undefined): string | null {
+  const map: Record<string, string> = {
+    click: 'locator.click',
+    fill: 'locator.fill',
+    type: 'locator.type',
+    clear: 'locator.clear',
+    press: 'locator.press',
+    hover: 'locator.hover',
+    check: 'locator.check',
+    uncheck: 'locator.uncheck',
+    selectOption: 'locator.selectOption',
+    scrollIntoView: 'locator.scrollIntoView'
+  };
+  return map[type ?? ''] ?? null;
 }
 
 function normalizePluginResult(raw: unknown): NormalizedResult {

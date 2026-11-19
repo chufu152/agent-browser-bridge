@@ -127,7 +127,8 @@ export function elementFingerprint(el: Element): string {
 function collectElements(
   root: Document | ShadowRoot,
   into: ElementDescriptor[],
-  frameIndex: number
+  frameIndex: number,
+  refMap?: Map<string, Element>
 ): void {
   const walk = (node: Element): void => {
     const tag = node.tagName.toLowerCase();
@@ -138,8 +139,9 @@ function collectElements(
       if (tag === 'input' && SENSITIVE_INPUT_TYPES.has((node as HTMLInputElement).type || '')) {
         // 跳过密码字段
       } else if (role !== 'generic' || contentEditable) {
+        const ref = 'el_' + simpleHash(elementFingerprint(node));
         into.push({
-          ref: '',
+          ref,
           role,
           name: computeName(node),
           text: visibleTextOf(node),
@@ -153,6 +155,7 @@ function collectElements(
           enabled: isEnabled(node),
           frameIndex
         });
+        refMap?.set(ref, node);
       }
     }
 
@@ -163,10 +166,11 @@ function collectElements(
     for (const child of Array.from(node.children)) walk(child);
   };
 
-  const startEls =
-    root instanceof Document
-      ? Array.from(root.body ? root.body.children : [])
-      : Array.from((root as ShadowRoot).children || []);
+  // 用 nodeType 判定文档（9 = DOCUMENT_NODE），避免 instanceof 跨 realm 失效
+  const isDocument = (root as any).nodeType === 9;
+  const startEls = isDocument
+    ? Array.from((root as Document).body ? (root as Document).body.children : [])
+    : Array.from((root as ShadowRoot).children || []);
   for (const el of startEls) walk(el);
 }
 
@@ -193,12 +197,6 @@ export function buildSnapshot(doc: Document = document): SnapshotResult {
   const truncated = elements.length > MAX;
   const slice = elements.slice(0, MAX);
 
-  for (const d of slice) {
-    const el = resolveByDescriptor(doc, d);
-    if (el) d.ref = 'el_' + simpleHash(elementFingerprint(el));
-    else d.ref = '';
-  }
-
   return {
     url: (doc.defaultView ? doc.defaultView.location.href : ''),
     title: doc.title,
@@ -207,16 +205,10 @@ export function buildSnapshot(doc: Document = document): SnapshotResult {
   };
 }
 
-function resolveByDescriptor(doc: Document, d: ElementDescriptor): Element | null {
-  const candidates: Element[] = [];
-  const all = doc.querySelectorAll('*');
-  for (const el of Array.from(all)) {
-    if (el.tagName.toLowerCase() !== d.tag) continue;
-    if (computeRole(el) !== d.role) continue;
-    if (computeName(el) !== d.name) continue;
-    candidates.push(el);
-  }
-  if (candidates.length === 1) return candidates[0];
-  if (candidates.length === 0) return null;
-  return candidates[0];
+/** 单次遍历构建 ref -> element 映射（O(n)，替代 O(n²) 的反查） */
+export function buildRefMap(doc: Document = document): Map<string, Element> {
+  const map = new Map<string, Element>();
+  const arr: ElementDescriptor[] = [];
+  collectElements(doc, arr, 0, map);
+  return map;
 }

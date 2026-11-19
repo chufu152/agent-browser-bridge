@@ -172,6 +172,55 @@ export default defineBackground(() => {
     }
   });
 
+  // Native Messaging 南向通道（M2）：桥接服务经此通道向插件下发命令。
+  // 原生消息 host 名：com.uba.bridge（见 packages/bridge/native-host/）。
+  const NATIVE_HOST = 'com.uba.bridge';
+
+  function connectNative(): void {
+    let port: chrome.runtime.Port | null = null;
+    try {
+      port = chrome.runtime.connectNative(NATIVE_HOST);
+    } catch {
+      // 原生 host 未注册时静默失败；由用户按文档注册后重试
+      return;
+    }
+
+    port.onMessage.addListener((message: any) => {
+      if (!message || typeof message !== 'object') return;
+      const { requestId, method, params } = message;
+      if (!requestId || typeof method !== 'string') return;
+      dispatch({ method, params: params ?? {} })
+        .then((result) => {
+          try {
+            port?.postMessage({ requestId, result });
+          } catch {
+            /* 端口已断开 */
+          }
+        })
+        .catch((e) => {
+          try {
+            port?.postMessage({ requestId, result: { ok: false, errorType: 'INTERNAL_ERROR', error: String(e) } });
+          } catch {
+            /* 端口已断开 */
+          }
+        });
+    });
+
+    port.onDisconnect.addListener(() => {
+      // MV3 下 SW 可能被回收，重连交给下一次唤醒或用户触发
+      console.warn('[UBA] native messaging disconnected');
+    });
+
+    // 通知桥接服务插件已就绪
+    try {
+      port.postMessage({ type: 'ready' });
+    } catch {
+      /* 忽略 */
+    }
+  }
+
+  connectNative();
+
   // 诊断入口：打印当前授权与上下文
   (globalThis as any).__UBA__ = {
     diagnose: async () => ({

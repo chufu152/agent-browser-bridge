@@ -1,9 +1,9 @@
-// 原生消息 host 注册脚本（Windows：写入 HKCU 注册表；macOS/Linux：写入 config 目录）。
+// 原生消息 host 注册脚本（Windows：写入 HKCU 注册表，覆盖 Chrome 与 Edge；macOS/Linux：写入 config 目录）。
 // 用法：node register.mjs <extension-id>
 // 生成 manifest 时把占位符替换为真实绝对路径与扩展 ID，再写入系统。
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
@@ -15,7 +15,7 @@ const launcherPath = join(__dirname, 'run-bridge.cmd');
 const extensionId = process.argv[2];
 if (!extensionId) {
   console.error('用法：node register.mjs <extension-id>');
-  console.error('扩展 ID 可在 chrome://extensions 页面查看（加载已解压扩展后）。');
+  console.error('扩展 ID 可在 edge://extensions 或 chrome://extensions 页面查看（加载已解压扩展后）。');
   process.exit(1);
 }
 
@@ -28,18 +28,23 @@ const manifest = template
 const platform = process.platform;
 
 if (platform === 'win32') {
-  // 写入 HKCU\Software\Google\Chrome\NativeMessagingHosts\com.uba.bridge
-  const key = `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${HOST_NAME}`;
+  // Windows：Chrome 与 Edge 用不同的注册表键，都注册一次
+  const browserKeys = [
+    { name: 'Chrome', key: 'HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\' + HOST_NAME },
+    { name: 'Edge', key: 'HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\' + HOST_NAME }
+  ];
   const manifestPath = join(__dirname, 'generated', `${HOST_NAME}.json`);
   mkdirSync(dirname(manifestPath), { recursive: true });
   writeFileSync(manifestPath, manifest, 'utf-8');
-  try {
-    execFileSync('reg', ['add', key, '/ve', '/t', 'REG_SZ', '/d', manifestPath, '/f'], { stdio: 'pipe' });
-    console.log(`[ok] Chrome 原生 host 已注册：${key} -> ${manifestPath}`);
-  } catch (e) {
-    console.error('[warn] 写入注册表失败，请手动执行：');
-    console.error(`  reg add "${key}" /ve /t REG_SZ /d "${manifestPath}" /f`);
-    console.error('  或者从 chrome://extensions 重新加载插件后再试。');
+
+  for (const { name, key } of browserKeys) {
+    try {
+      execFileSync('reg', ['add', key, '/ve', '/t', 'REG_SZ', '/d', manifestPath, '/f'], { stdio: 'pipe' });
+      console.log(`[ok] ${name} 原生 host 已注册：${key} -> ${manifestPath}`);
+    } catch {
+      console.error(`[warn] ${name} 写入注册表失败，请手动执行：`);
+      console.error(`  reg add "${key}" /ve /t REG_SZ /d "${manifestPath}" /f`);
+    }
   }
   console.log(`[info] manifest 已生成：${manifestPath}`);
 } else {
@@ -56,6 +61,6 @@ if (platform === 'win32') {
 }
 
 console.log('\n完成注册后：');
-console.log('1. 重新加载扩展（chrome://extensions -> 重新加载）；');
+console.log('1. 重新加载扩展（edge://extensions 或 chrome://extensions -> 重新加载）；');
 console.log('2. 启动 bridge（或由浏览器经原生消息自动拉起）；');
 console.log('3. 用 Agent 连接 ws://127.0.0.1:3000 并发送 browser.connect。');

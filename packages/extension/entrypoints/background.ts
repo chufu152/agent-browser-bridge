@@ -64,7 +64,7 @@ export default defineBackground(() => {
       }
 
       case 'browser.getTabs': {
-        return { tabs: await tabs.list(params?.agentId as string) };
+        return { tabs: await tabs.list() };
       }
 
       case 'browser.getActiveTab': {
@@ -269,7 +269,7 @@ export default defineBackground(() => {
   // 诊断入口：打印当前授权与上下文
   (globalThis as any).__UBA__ = {
     diagnose: async () => ({
-      tabs: await tabs.list('*'),
+      tabs: await tabs.list(),
       pageContext: Array.from(pageContext.entries())
     })
   };

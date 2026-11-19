@@ -42,10 +42,12 @@ export class TabManager {
     return !!set && set.has(agentId);
   }
 
-  async list(agentId: string): Promise<TabInfo[]> {
+  // 当前所有已认证 Agent 均可查看全部标签页（认证在桥接层完成）。
+  // 标签页级授权（grant / hasGrant）为未来多 Agent 隔离预留，暂不在此过滤。
+  async list(): Promise<TabInfo[]> {
     const tabs = await chrome.tabs.query({});
     return tabs
-      .filter((t) => t.id !== undefined && this.hasGrant(t.id, agentId))
+      .filter((t) => t.id !== undefined)
       .map((t) => ({
         tabId: t.id as number,
         windowId: t.windowId,

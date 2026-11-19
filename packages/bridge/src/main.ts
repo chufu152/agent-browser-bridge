@@ -62,6 +62,29 @@ export function startBridge(opts: { host?: string; port?: number; verbose?: bool
   nm.onDisconnect(() => bridge.setTransport(null));
   bridge.setTransport(nm);
 
+  // 本地管理员接口（扩展 popup 经原生消息调用，Agent 路由不可达）
+  nm.setAdminHandler((msg: any) => {
+    switch (msg.action) {
+      case 'listConfirmations':
+        return bridge.confirmations.listPending().map((c) => ({
+          confirmationId: c.confirmationId,
+          operationId: c.operationId,
+          method: c.method,
+          riskSummary: c.riskSummary,
+          createdAt: c.createdAt,
+          expiresAt: c.expiresAt
+        }));
+      case 'approve':
+        return { ok: bridge.approveConfirmation(msg.confirmationId, true) };
+      case 'deny':
+        return { ok: bridge.approveConfirmation(msg.confirmationId, false) };
+      case 'listAudit':
+        return bridge.audit.list();
+      default:
+        return { ok: false, error: 'unknown admin action' };
+    }
+  });
+
   // 北向：WebSocket
   const handle: WebSocketServerHandle = createWebSocketServer({
     host, port, router: bridge.router, sessions: bridge.sessions, audit: bridge.audit, events: bridge.events

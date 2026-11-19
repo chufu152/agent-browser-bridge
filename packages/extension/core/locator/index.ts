@@ -6,6 +6,7 @@ import {
   computeName,
   computeRole,
   isVisible,
+  queryAllDeep,
   type Role
 } from '../dom-engine/index';
 
@@ -52,9 +53,9 @@ function finish(matches: Element[]): LocateResult {
 }
 
 function byRoleName(loc: Locator, doc: Document): LocateResult {
-  const all = doc.querySelectorAll('*');
+  const all = queryAllDeep(doc);
   const matches: Element[] = [];
-  for (const el of Array.from(all)) {
+  for (const el of all) {
     if (computeRole(el) !== loc.role) continue;
     if (loc.name !== undefined) {
       const n = computeName(el);
@@ -69,9 +70,9 @@ function byRoleName(loc: Locator, doc: Document): LocateResult {
 }
 
 function byText(loc: Locator, doc: Document): LocateResult {
-  const all = doc.querySelectorAll('*');
+  const all = queryAllDeep(doc);
   const matches: Element[] = [];
-  for (const el of Array.from(all)) {
+  for (const el of all) {
     const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
     if (loc.exact ? t === loc.text : t.toLowerCase().includes((loc.text as string).toLowerCase())) {
       matches.push(el);
@@ -81,18 +82,18 @@ function byText(loc: Locator, doc: Document): LocateResult {
 }
 
 function byLabel(loc: Locator, doc: Document): LocateResult {
-  const all = doc.querySelectorAll('*');
+  const all = queryAllDeep(doc);
   const matches: Element[] = [];
-  for (const el of Array.from(all)) {
+  for (const el of all) {
     if (computeName(el) === loc.label) matches.push(el);
   }
   return finish(matches);
 }
 
 function byPlaceholder(loc: Locator, doc: Document): LocateResult {
-  const all = doc.querySelectorAll('input, textarea');
+  const all = queryAllDeep(doc).filter((el) => el.tagName.toLowerCase() === 'input' || el.tagName.toLowerCase() === 'textarea');
   const matches: Element[] = [];
-  for (const el of Array.from(all)) {
+  for (const el of all) {
     if ((el as HTMLInputElement).getAttribute('placeholder') === loc.placeholder) matches.push(el);
   }
   return finish(matches);

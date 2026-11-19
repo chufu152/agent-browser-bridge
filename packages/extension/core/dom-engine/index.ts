@@ -128,9 +128,10 @@ function collectElements(
   root: Document | ShadowRoot,
   into: ElementDescriptor[],
   frameIndex: number,
-  refMap?: Map<string, Element>
+  refMap?: Map<string, Element>,
+  inShadowRoot = false
 ): void {
-  const walk = (node: Element): void => {
+  const walk = (node: Element, inShadow: boolean): void => {
     const tag = node.tagName.toLowerCase();
     const contentEditable = (node as HTMLElement).isContentEditable;
 
@@ -153,17 +154,28 @@ function collectElements(
           disabled: !isEnabled(node),
           visible: isVisible(node),
           enabled: isEnabled(node),
-          frameIndex
+          frameIndex,
+          inShadowRoot: inShadow || undefined
         });
         refMap?.set(ref, node);
       }
     }
 
+    // Shadow DOM（M5）：递归遍历开放阴影根
     const shadow = (node as Element).shadowRoot;
     if (shadow) {
-      for (const c of Array.from(shadow.children)) walk(c);
+      for (const c of Array.from(shadow.children)) walk(c, true);
     }
-    for (const child of Array.from(node.children)) walk(child);
+
+    // 同源 iframe（M5）：递归遍历其文档；跨域 contentDocument 为 null，跳过
+    if (tag === 'iframe') {
+      const iframeDoc = (node as HTMLIFrameElement).contentDocument;
+      if (iframeDoc) {
+        for (const c of Array.from(iframeDoc.body ? iframeDoc.body.children : [])) walk(c, inShadow);
+      }
+    }
+
+    for (const child of Array.from(node.children)) walk(child, inShadow);
   };
 
   // 用 nodeType 判定文档（9 = DOCUMENT_NODE），避免 instanceof 跨 realm 失效
@@ -171,7 +183,24 @@ function collectElements(
   const startEls = isDocument
     ? Array.from((root as Document).body ? (root as Document).body.children : [])
     : Array.from((root as ShadowRoot).children || []);
-  for (const el of startEls) walk(el);
+  for (const el of startEls) walk(el, inShadowRoot);
+}
+
+/** 深遍历收集所有元素（含 Shadow DOM 与同源 iframe），供定位器匹配 */
+export function queryAllDeep(doc: Document): Element[] {
+  const result: Element[] = [];
+  const walk = (node: Element): void => {
+    result.push(node);
+    const shadow = (node as Element).shadowRoot;
+    if (shadow) for (const c of Array.from(shadow.children)) walk(c);
+    if (node.tagName.toLowerCase() === 'iframe') {
+      const iframeDoc = (node as HTMLIFrameElement).contentDocument;
+      if (iframeDoc) for (const c of Array.from(iframeDoc.body ? iframeDoc.body.children : [])) walk(c);
+    }
+    for (const child of Array.from(node.children)) walk(child);
+  };
+  for (const el of Array.from(doc.body ? doc.body.children : [])) walk(el);
+  return result;
 }
 
 function simpleHash(str: string): string {

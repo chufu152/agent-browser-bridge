@@ -17,6 +17,7 @@ export class NativeMessagingTransport implements ExtensionTransport {
   private buffer = Buffer.alloc(0);
   private disconnectCbs: Array<() => void> = [];
   private disconnected = false;
+  private adminHandler: ((msg: any) => Promise<any> | any) | null = null;
 
   constructor(
     private readonly stdin: Readable = process.stdin,
@@ -26,6 +27,11 @@ export class NativeMessagingTransport implements ExtensionTransport {
     this.stdin.on('data', (chunk: Buffer) => this.onData(chunk));
     this.stdin.on('end', () => this.emitDisconnect());
     this.stdin.on('error', () => this.emitDisconnect());
+  }
+
+  /** 注册本地管理员消息处理器（来自扩展 popup 的确认/审计请求） */
+  setAdminHandler(handler: (msg: any) => Promise<any> | any): void {
+    this.adminHandler = handler;
   }
 
   private onData(chunk: Buffer): void {
@@ -46,6 +52,15 @@ export class NativeMessagingTransport implements ExtensionTransport {
     } catch {
       return;
     }
+
+    // 管理员消息（扩展 popup → 桥接服务）：type='admin'
+    if (msg?.type === 'admin' && this.adminHandler) {
+      Promise.resolve(this.adminHandler(msg))
+        .then((result) => this.write({ type: 'admin', adminId: msg.adminId, result }))
+        .catch((e) => this.write({ type: 'admin', adminId: msg.adminId, error: String(e) }));
+      return;
+    }
+
     const requestId = msg?.requestId as string | undefined;
     if (!requestId) return;
     const p = this.pending.get(requestId);
@@ -54,6 +69,14 @@ export class NativeMessagingTransport implements ExtensionTransport {
       clearTimeout(p.timer);
       p.resolve(msg?.result ?? msg);
     }
+  }
+
+  private write(obj: unknown): void {
+    if (this.disconnected) return;
+    const payload = Buffer.from(JSON.stringify(obj), 'utf8');
+    const len = Buffer.alloc(4);
+    len.writeUInt32LE(payload.length, 0);
+    this.stdout.write(Buffer.concat([len, payload]));
   }
 
   send(command: ExtensionCommand): Promise<unknown> {
@@ -67,10 +90,7 @@ export class NativeMessagingTransport implements ExtensionTransport {
         reject(new Error('Native messaging request timed out'));
       }, this.timeoutMs);
       this.pending.set(requestId, { resolve, reject, timer });
-      const payload = Buffer.from(JSON.stringify({ requestId, ...command }), 'utf8');
-      const len = Buffer.alloc(4);
-      len.writeUInt32LE(payload.length, 0);
-      this.stdout.write(Buffer.concat([len, payload]));
+      this.write({ requestId, ...command });
     });
   }
 

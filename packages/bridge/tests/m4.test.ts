@@ -117,6 +117,25 @@ describe('JsonRpcRouter - 批量执行', () => {
   });
 });
 
+describe('JsonRpcRouter - 文件操作授权（M5）', () => {
+  it('未经确认的文件下载被拒绝（CONFIRMATION_REQUIRED）', async () => {
+    const tm = new TokenManager();
+    const router = new JsonRpcRouter({
+      tokens: tm, sessions: new SessionManager(), operations: new OperationStore(), audit: new AuditLog(),
+      confirmations: new ConfirmationManager(), events: new EventBus(),
+      getTransport: () => ({ send: async () => ({ ok: true, result: {} }), onDisconnect: () => {} })
+    });
+    const token = tm.issue('agent-a');
+    const conn = await router.handle({ jsonrpc: '2.0', id: 1, method: 'browser.connect', params: { agentId: 'agent-a', token, protocolVersion: '1.0' } });
+    const sessionId = (conn.result as any).sessionId;
+    const res = await router.handle({
+      jsonrpc: '2.0', id: 2, method: 'browser.downloadFile',
+      params: { sessionId, tabId: 1, operationId: 'dl-1', url: 'https://example.com/f.pdf' }
+    });
+    expect(res.error?.data?.errorType).toBe('CONFIRMATION_REQUIRED');
+  });
+});
+
 describe('JsonRpcRouter - 智能等待', () => {
   it('waitForText 条件满足后返回 matched', async () => {
     let calls = 0;

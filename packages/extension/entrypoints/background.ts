@@ -176,18 +176,33 @@ export default defineBackground(() => {
   // Native Messaging 南向通道（M2）：桥接服务经此通道向插件下发命令。
   // 原生消息 host 名：com.uba.bridge（见 packages/bridge/native-host/）。
   const NATIVE_HOST = 'com.uba.bridge';
+  let nativePort: chrome.runtime.Port | null = null;
+  let adminSeq = 0;
+  const adminPending = new Map<string, (v: unknown) => void>();
 
   function connectNative(): void {
-    let port: chrome.runtime.Port | null = null;
     try {
-      port = chrome.runtime.connectNative(NATIVE_HOST);
+      nativePort = chrome.runtime.connectNative(NATIVE_HOST);
     } catch {
       // 原生 host 未注册时静默失败；由用户按文档注册后重试
       return;
     }
+    const port = nativePort;
 
     port.onMessage.addListener((message: any) => {
       if (!message || typeof message !== 'object') return;
+
+      // 管理员响应（bridge → popup）
+      if (message.type === 'admin') {
+        const resolve = adminPending.get(message.adminId);
+        if (resolve) {
+          adminPending.delete(message.adminId);
+          resolve(message.error ? { ok: false, error: message.error } : message.result);
+        }
+        return;
+      }
+
+      // Agent 命令（bridge → SW 分发到 content script）
       const { requestId, method, params } = message;
       if (!requestId || typeof method !== 'string') return;
       dispatch({ method, params: params ?? {} })
@@ -210,6 +225,7 @@ export default defineBackground(() => {
     port.onDisconnect.addListener(() => {
       // MV3 下 SW 可能被回收，重连交给下一次唤醒或用户触发
       console.warn('[UBA] native messaging disconnected');
+      nativePort = null;
     });
 
     // 通知桥接服务插件已就绪
@@ -221,6 +237,25 @@ export default defineBackground(() => {
   }
 
   connectNative();
+
+  // 本地管理员消息（popup → bridge）：经原生消息转发
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message && message.type === 'UBA_ADMIN') {
+      if (!nativePort) {
+        sendResponse({ ok: false, error: 'bridge not connected' });
+        return false;
+      }
+      const adminId = 'adm_' + (++adminSeq);
+      adminPending.set(adminId, (v) => sendResponse(v));
+      try {
+        nativePort.postMessage({ type: 'admin', adminId, action: message.action, confirmationId: message.confirmationId });
+      } catch (e) {
+        adminPending.delete(adminId);
+        sendResponse({ ok: false, error: String(e) });
+      }
+      return true;
+    }
+  });
 
   // 诊断入口：打印当前授权与上下文
   (globalThis as any).__UBA__ = {

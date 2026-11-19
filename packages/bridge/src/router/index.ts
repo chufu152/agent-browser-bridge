@@ -46,7 +46,9 @@ const WRITE_METHODS = new Set([
   'locator.uncheck',
   'locator.selectOption',
   'locator.scrollIntoView',
-  'browser.batch'
+  'browser.batch',
+  'browser.uploadFile',
+  'browser.downloadFile'
 ]);
 
 export interface RouterDeps {

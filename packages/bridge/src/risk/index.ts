@@ -36,6 +36,9 @@ export function classifyRisk(method: string, params: Record<string, unknown>): R
   // 关闭标签页 → 受限
   if (method === 'browser.closeTab') return 'restricted';
 
+  // 文件上传/下载（M5）→ 高风险，需每次人工确认
+  if (method === 'browser.uploadFile' || method === 'browser.downloadFile') return 'high';
+
   return 'normal';
 }
 

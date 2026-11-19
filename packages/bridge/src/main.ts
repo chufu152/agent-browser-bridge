@@ -116,7 +116,3 @@ export function startBridge(opts: { host?: string; port?: number; verbose?: bool
 
   return bridge;
 }
-
-if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`) {
-  startBridge();
-}

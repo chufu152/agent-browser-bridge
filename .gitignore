@@ -24,3 +24,7 @@ packages/*/node_modules/
 
 # WXT 自动生成
 .wxt/
+
+# UBA 本地生成/用户相关
+uba-extension-id.txt
+packages/bridge/native-host/generated/

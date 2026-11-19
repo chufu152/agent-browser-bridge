@@ -238,6 +238,15 @@ export default defineBackground(() => {
 
   connectNative();
 
+  // 自动重连：原生 host 注册后，无需手动重载插件即可自动连上。
+  // MV3 service worker 会被回收，因此用 chrome.alarms 定时重试（无连接时才连）。
+  chrome.alarms.create('uba-native-reconnect', { periodInMinutes: 0.2 }); // 每 12 秒
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === 'uba-native-reconnect' && !nativePort) {
+      connectNative();
+    }
+  });
+
   // 本地管理员消息（popup → bridge）：经原生消息转发
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message && message.type === 'UBA_ADMIN') {

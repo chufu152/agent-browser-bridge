@@ -1,21 +1,38 @@
 // MCP Server — 标准工具接入（stdio，JSON-RPC over 换行分隔 JSON）。
 // 将浏览器能力暴露为 MCP Tools，内部通过 @uba/sdk-typescript 调用 BCP（经桥接服务）。
 //
-// 环境变量：
+// 配置优先级：环境变量 > ~/.uba/agents.json（由一键脚本自动生成）。
 //   UBA_ENDPOINT  桥接服务 WebSocket 地址（默认 ws://127.0.0.1:3000）
-//   UBA_AGENT_ID  Agent 身份
-//   UBA_TOKEN     访问 token
+//   UBA_AGENT_ID  Agent 身份（默认取配置文件的第一个 agent）
+//   UBA_TOKEN     访问 token（默认取配置文件的第一个 agent）
 
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { createInterface } from 'node:readline';
 import { BrowserClient, UbaError } from '@uba/sdk-typescript';
 import { TOOLS, dispatchTool } from './tools';
 
 const PROTOCOL_VERSION = '2024-11-05';
 
+function loadConfig(): { agentId: string; token: string } | null {
+  try {
+    const file = join(homedir(), '.uba', 'agents.json');
+    if (!existsSync(file)) return null;
+    const raw = JSON.parse(readFileSync(file, 'utf-8'));
+    const first = raw?.agents?.[0];
+    if (first?.agentId && first?.token) return { agentId: first.agentId, token: first.token };
+  } catch {
+    /* 忽略 */
+  }
+  return null;
+}
+
 async function main(): Promise<void> {
+  const cfg = loadConfig();
   const endpoint = process.env.UBA_ENDPOINT ?? 'ws://127.0.0.1:3000';
-  const agentId = process.env.UBA_AGENT_ID ?? '';
-  const token = process.env.UBA_TOKEN ?? '';
+  const agentId = process.env.UBA_AGENT_ID ?? cfg?.agentId ?? 'demo-agent';
+  const token = process.env.UBA_TOKEN ?? cfg?.token ?? '';
 
   const client = new BrowserClient({ endpoint, agentId, token });
 

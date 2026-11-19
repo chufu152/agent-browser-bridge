@@ -31,7 +31,8 @@ console.log(`扩展 ID : ${extId}`);
 console.log('注册原生消息 host（Chrome + Edge）...\n');
 
 const registerPath = join(root, 'packages', 'bridge', 'native-host', 'register.mjs');
-const r = spawnSync('node', [registerPath, extId], { stdio: 'inherit', shell: false });
+// 用当前 node 的完整路径（process.execPath），避免再次依赖 PATH
+const r = spawnSync(process.execPath, [registerPath, extId], { stdio: 'inherit', shell: false });
 
 if (r.status !== 0) {
   console.error('\n注册失败，请检查上面的错误信息。');

@@ -53,6 +53,11 @@ export interface ActionResult {
 }
 
 function setNativeValue(el: Element, value: string): void {
+  const html = el as HTMLElement;
+  if (html.isContentEditable) {
+    setContentEditableValue(html, value);
+    return;
+  }
   const input = el as HTMLInputElement;
   const proto = Object.getPrototypeOf(input);
   const desc = Object.getOwnPropertyDescriptor(proto, 'value');
@@ -60,6 +65,38 @@ function setNativeValue(el: Element, value: string): void {
   else input.value = value;
   input.dispatchEvent(new Event('input', { bubbles: true }));
   input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+// contenteditable（UEditor/ProseMirror/Quill 等）没有 .value 访问器，
+// 必须走真实输入路径改文本，否则只挂 JS 属性、页面无变化且验证假成功。
+function setContentEditableValue(html: HTMLElement, value: string): void {
+  const doc = html.ownerDocument;
+  html.focus();
+  const sel = doc.getSelection();
+  if (sel) {
+    const r = doc.createRange();
+    r.selectNodeContents(html);
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+  // execCommand 走浏览器输入管线，能触发编辑器框架的 beforeinput/input 监听
+  const command = value === '' ? 'delete' : 'insertText';
+  const done = typeof doc.execCommand === 'function' && doc.execCommand(command, false, value);
+  if (!done) {
+    const withInnerText = html as HTMLElement & { innerText?: string };
+    if (typeof withInnerText.innerText === 'string') withInnerText.innerText = value;
+    else html.textContent = value;
+  }
+  html.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function readValue(el: Element): string {
+  const html = el as HTMLElement;
+  if (html.isContentEditable) {
+    const innerText = (html as HTMLElement & { innerText?: string }).innerText;
+    return (typeof innerText === 'string' ? innerText : html.textContent) ?? '';
+  }
+  return (el as HTMLInputElement).value ?? '';
 }
 
 function focusElement(el: Element): void {
@@ -86,7 +123,7 @@ function fill(el: Element, value: string): ActionResult {
   if (!isEnabled(el)) return { ok: false, errorType: 'INVALID_ELEMENT_STATE', error: 'Element is disabled' };
   focusElement(el);
   setNativeValue(el, value);
-  return { ok: true, verified: (el as HTMLInputElement).value === value };
+  return { ok: true, verified: readValue(el) === value };
 }
 
 function typeText(el: Element, text: string): ActionResult {
@@ -94,14 +131,14 @@ function typeText(el: Element, text: string): ActionResult {
   if (!isEnabled(el)) return { ok: false, errorType: 'INVALID_ELEMENT_STATE', error: 'Element is disabled' };
   focusElement(el);
   setNativeValue(el, text);
-  return { ok: true, verified: (el as HTMLInputElement).value === text };
+  return { ok: true, verified: readValue(el) === text };
 }
 
 function clear(el: Element): ActionResult {
   if (isPasswordField(el)) return { ok: false, errorType: 'PERMISSION_DENIED', error: 'Password field value access is not allowed' };
   focusElement(el);
   setNativeValue(el, '');
-  return { ok: true, verified: (el as HTMLInputElement).value === '' };
+  return { ok: true, verified: readValue(el).trim() === '' };
 }
 
 function press(el: Element, key: string): ActionResult {

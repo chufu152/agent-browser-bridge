@@ -134,13 +134,13 @@ export function isEnabled(el: Element): boolean {
   return true;
 }
 
-export function elementFingerprint(el: Element, role?: Role, name?: string): string {
+export function elementFingerprint(el: Element, role?: Role, name?: string, frameKey = ''): string {
   const tag = el.tagName.toLowerCase();
   const r = role ?? computeRole(el);
   const n = name ?? computeName(el);
   const id = (el as HTMLElement).id || '';
   const path = domPath(el);
-  return [tag, r, n, id, path].join('|');
+  return [tag, r, n, id, frameKey, path].join('|');
 }
 
 function collectElements(
@@ -151,7 +151,7 @@ function collectElements(
   inShadowRoot = false,
   maxTextLength = 200
 ): void {
-  const walk = (node: Element, inShadow: boolean): void => {
+  const walk = (node: Element, inShadow: boolean, frameKey: string): void => {
     const tag = node.tagName.toLowerCase();
     const contentEditable = (node as HTMLElement).isContentEditable;
 
@@ -163,7 +163,7 @@ function collectElements(
         // 语义计算只做一次，避免 elementFingerprint / name / enabled 重复计算
         const name = computeName(node, maxTextLength);
         const enabled = isEnabled(node);
-        const ref = 'el_' + simpleHash(elementFingerprint(node, role, name));
+        const ref = 'el_' + simpleHash(elementFingerprint(node, role, name, frameKey));
         into.push({
           ref,
           role,
@@ -187,18 +187,20 @@ function collectElements(
     // Shadow DOM（M5）：递归遍历开放阴影根
     const shadow = (node as Element).shadowRoot;
     if (shadow) {
-      for (const c of Array.from(shadow.children)) walk(c, true);
+      for (const c of Array.from(shadow.children)) walk(c, true, frameKey);
     }
 
-    // 同源 iframe（M5）：递归遍历其文档；跨域 contentDocument 为 null，跳过
+    // 同源 iframe（M5）：递归遍历其文档；跨域 contentDocument 为 null，跳过。
+    // frameKey 携带 iframe 在父文档中的路径，避免跨 frame 同构元素 ref 碰撞。
     if (tag === 'iframe') {
       const iframeDoc = (node as HTMLIFrameElement).contentDocument;
       if (iframeDoc) {
-        for (const c of Array.from(iframeDoc.body ? iframeDoc.body.children : [])) walk(c, inShadow);
+        const childKey = frameKey + '#' + domPath(node);
+        for (const c of Array.from(iframeDoc.body ? iframeDoc.body.children : [])) walk(c, inShadow, childKey);
       }
     }
 
-    for (const child of Array.from(node.children)) walk(child, inShadow);
+    for (const child of Array.from(node.children)) walk(child, inShadow, frameKey);
   };
 
   // 用 nodeType 判定文档（9 = DOCUMENT_NODE），避免 instanceof 跨 realm 失效
@@ -206,7 +208,7 @@ function collectElements(
   const startEls = isDocument
     ? Array.from((root as Document).body ? (root as Document).body.children : [])
     : Array.from((root as ShadowRoot).children || []);
-  for (const el of startEls) walk(el, inShadowRoot);
+  for (const el of startEls) walk(el, inShadowRoot, '');
 }
 
 /** 深遍历收集所有元素（含 Shadow DOM 与同源 iframe），供定位器匹配 */

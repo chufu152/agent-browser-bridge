@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>学生学习页面 - 作业（插件压测复刻页）</title>
+<style>
+  body { font-family: "Microsoft YaHei", sans-serif; margin: 0; background: #f5f6f7; }
+  .header { background: #fff; border-bottom: 1px solid #e4e7ed; padding: 14px 24px; }
+  .header h1 { font-size: 18px; margin: 0; }
+  .meta { color: #909399; font-size: 12px; margin-top: 4px; }
+  .paper { max-width: 900px; margin: 16px auto; background: #fff; padding: 24px 32px; border-radius: 4px; }
+  .question { margin-bottom: 22px; }
+  .stem { font-size: 14px; font-weight: bold; margin-bottom: 8px; }
+  .opt { display: block; font-size: 14px; margin: 4px 0 4px 8px; cursor: pointer; }
+  .opt input { margin-right: 6px; }
+  iframe.ueditor { width: 100%; height: 120px; border: 1px solid #dcdfe6; border-radius: 2px; }
+  .toolbar { position: sticky; bottom: 0; background: #fff; border-top: 1px solid #e4e7ed; padding: 12px 32px; text-align: center; }
+  .toolbar button { font-size: 14px; padding: 8px 28px; margin: 0 8px; cursor: pointer; }
+  #submit-btn { background: #409eff; color: #fff; border: none; border-radius: 4px; }
+  #selfcheck-btn { background: #fff; border: 1px solid #dcdfe6; border-radius: 4px; }
+  #selfcheck-result { margin-left: 12px; font-size: 14px; color: #67c23a; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>SQL 数据库原理 · 单元作业（1:1 结构复刻 · 仅供插件压测）</h1>
+  <div class="meta" id="meta"></div>
+</div>
+<div class="paper" id="paper"></div>
+<div class="toolbar">
+  <button id="selfcheck-btn" type="button">自检</button>
+  <button id="submit-btn" type="button">提交作业</button>
+  <span id="selfcheck-result"></span>
+</div>
+<script>
+  // 结构照搬超星作业页：单选 radio 组 / 判断 radio 组 / 简答 UEditor 式 iframe（body contenteditable + p）。
+  var q = new URLSearchParams(location.search);
+  document.getElementById('meta').textContent =
+    'courseId=' + (q.get('courseId') || '0') + '  workId=' + (q.get('workId') || '0') +
+    '  answerId=' + (q.get('answerId') || '0') + '  （本地复刻页，无计分、无后端）';
+
+  var paper = document.getElementById('paper');
+  var n = 0;
+
+  function stem(text) {
+    n++;
+    var div = document.createElement('div');
+    div.className = 'question';
+    div.id = 'q' + n;
+    var s = document.createElement('div');
+    s.className = 'stem';
+    s.textContent = n + '. ' + text;
+    div.appendChild(s);
+    paper.appendChild(div);
+    return div;
+  }
+
+  function radio(div, name, value, label) {
+    var l = document.createElement('label');
+    l.className = 'opt';
+    var r = document.createElement('input');
+    r.type = 'radio';
+    r.name = name;
+    r.value = value;
+    l.appendChild(r);
+    l.appendChild(document.createTextNode(label));
+    div.appendChild(l);
+  }
+
+  // 1–40 单选题
+  for (var i = 1; i <= 40; i++) {
+    var d = stem('（单选题）关于 SQL 的第 ' + i + ' 个测试问题，下列说法正确的是？');
+    ['A', 'B', 'C', 'D'].forEach(function (v) {
+      radio(d, 'q' + n, v, v + '. 第 ' + i + ' 题选项 ' + v);
+    });
+  }
+
+  // 41–70 判断题
+  for (var j = 1; j <= 30; j++) {
+    var d2 = stem('（判断题）SQL 测试命题 ' + j + '：该说法是否成立？');
+    radio(d2, 'q' + n, 'T', '正确');
+    radio(d2, 'q' + n, 'F', '错误');
+  }
+
+  // 71–100 简答题：UEditor 式 iframe，body contenteditable，初始 <p><br></p>
+  for (var k = 1; k <= 30; k++) {
+    var d3 = stem('（简答题）请简述 SQL 测试要点 ' + k + '。');
+    var f = document.createElement('iframe');
+    f.className = 'ueditor';
+    f.id = 'editor-frame-' + n;
+    f.setAttribute('srcdoc',
+      '<!doctype html><html><head><style>body{font-family:"Microsoft YaHei",sans-serif;font-size:14px;margin:8px;}</style></head>' +
+      '<body contenteditable="true"><p><br></p></body></html>');
+    d3.appendChild(f);
+  }
+
+  // 自检：统计真实作答状态（checked radio 组数 + 非空编辑器数），结果写入页面供插件读回
+  document.getElementById('selfcheck-btn').addEventListener('click', function () {
+    var groups = {};
+    document.querySelectorAll('input[type=radio]').forEach(function (r) {
+      if (r.checked) groups[r.name] = true;
+    });
+    var answered = Object.keys(groups).length;
+    var editors = document.querySelectorAll('iframe.ueditor');
+    var filled = 0;
+    editors.forEach(function (f) {
+      var body = f.contentDocument && f.contentDocument.body;
+      if (body && body.textContent.trim().length > 0) filled++;
+    });
+    document.getElementById('selfcheck-result').textContent =
+      '自检结果：' + (answered + filled) + '/100（选择判断 ' + answered + '/70，简答 ' + filled + '/30）';
+  });
+
+  document.getElementById('submit-btn').addEventListener('click', function () {
+    alert('复刻页无后端，不会真正提交。');
+  });
+</script>
+</body>
+</html>

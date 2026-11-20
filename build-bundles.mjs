@@ -17,7 +17,7 @@ const common = {
 };
 
 async function run() {
-  // 1) 桥接服务（含 WebSocket + 原生消息）
+  // 1) 桥接服务（WebSocket 北向 + CDP 南向）
   await build({
     ...common,
     entryPoints: ['packages/bridge/src/cli.ts'],
@@ -32,6 +32,26 @@ async function run() {
     outfile: 'dist/bin/mcp-server.cjs'
   });
   console.log('✓ dist/bin/mcp-server.cjs');
+
+  // 3) 连通自检
+  await build({
+    ...common,
+    entryPoints: ['packaging/smoke.mjs'],
+    outfile: 'dist/bin/smoke.cjs'
+  });
+  console.log('✓ dist/bin/smoke.cjs');
+
+  // 4) 页面引擎（注入受控浏览器的 IIFE 脚本）
+  await build({
+    bundle: true,
+    platform: 'browser',
+    format: 'iife',
+    target: 'chrome100',
+    entryPoints: ['packages/extension/core/page-entry.ts'],
+    outfile: 'dist/bin/page-engine.js',
+    logLevel: 'info'
+  });
+  console.log('✓ dist/bin/page-engine.js');
 }
 
 run().catch((e) => {

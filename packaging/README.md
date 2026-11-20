@@ -1,53 +1,50 @@
-# UBA 浏览器 Agent —— 开箱即用包
+# UBA 浏览器 Agent —— 零安装开箱即用包（CDP 版）
 
-让任意 AI Agent（Claude / Cursor / WorkBuddy 等）控制浏览器。解压后运行一次安装，之后直接在 agent 里用自然语言指挥浏览器。
+让任意 AI Agent（Claude / Cursor / Qoder / WorkBuddy 等）控制浏览器。
+**不装扩展、不写注册表、不需要重载或刷新页面。** 解压后跑一条命令，全部自动完成。
 
-## 快速开始（3 步）
-
-### 1. 安装（自动）
+## 快速开始（1 步）
 
 - Windows：双击 `setup.cmd`
-- 其他：运行 `node setup.mjs`
+- 其他 / agent 自动执行：`node setup.mjs`
 
-会自动完成：注册原生消息 host、生成 token、生成 MCP 配置。
+脚本自动完成：
 
-### 2. 加载扩展（唯一手动步骤）
+1. 生成 Agent token（`~/.uba/agents.json`，已有则复用）
+2. 拉起一个**带你的登录态**的受控浏览器窗口（从日常 Edge/Chrome 复制 Cookies，独立 profile，不影响日常浏览器）
+3. 启动桥接服务（控制通道 + 本地人工确认页）
+4. 生成 MCP 配置并做连通自检
 
-1. 打开 `edge://extensions`，开启「开发人员模式」
-2. 「加载解压缩的扩展」→ 选择本包的 `extension` 文件夹
-
-### 3. 接入 agent
-
-把 `mcp-config/` 里的配置贴进你的 agent：
-
-- **Claude Desktop**：`mcp-config/claude-desktop.json` → 合并进 `%APPDATA%\Claude\claude_desktop_config.json`
-- **Cursor**：`mcp-config/cursor-mcp.json` → 放进 `.cursor/mcp.json`
-- **其他 MCP agent**：`mcp-config/generic.json`
-
-## 使用
-
-接入后直接对 agent 说：
+完成后把 `mcp-config/generic.json` 的内容接入你的 agent（或直接让 agent 读取该文件自行配置），即可用自然语言控制浏览器：
 
 - 「打开 bilibili.com 搜索 机器学习」
-- 「看一下当前页有哪些按钮」
-- 「点击登录按钮」
+- 「读一下当前页面的完整内容」
+- 「把这个表单填了」
 
-agent 会自动调用浏览器工具完成。
+## 原理
+
+受控浏览器以调试端口（CDP）启动，桥接服务直连 DevTools 协议，把与扩展版同一套 DOM/定位/动作引擎注入页面执行。没有扩展，就没有安装/重载/刷新这些前置。
 
 ## 目录结构
 
 ```
-setup.cmd / setup.mjs     一键安装脚本
-bin/bridge.cjs            桥接服务（已编译，无需依赖）
+setup.cmd / setup.mjs     一键安装脚本（唯一入口）
+uba-browser.mjs           受控浏览器启动器（幂等，可单独重跑）
+bin/bridge.cjs            桥接服务（已编译，无依赖）
 bin/mcp-server.cjs        MCP 服务（已编译）
-extension/                预构建浏览器扩展
-mcp-config/               agent 接入配置
-com.uba.bridge.json       原生消息 manifest（安装时生成）
-native-host.cmd           原生消息启动器（安装时生成）
+bin/page-engine.js        页面引擎（注入受控浏览器）
+bin/smoke.cjs             连通自检
+mcp-config/               agent 接入配置（安装时生成）
 ```
+
+## 日常使用
+
+- 受控浏览器窗口关掉后：重跑 `node uba-browser.mjs` 即可（登录态保留在独立 profile）。
+- 桥接服务挂了：重跑 `node setup.mjs`（全程幂等）。
+- 登录态过期：在受控浏览器窗口里正常登录一次即可。
 
 ## 安全红线
 
-- 高风险操作（支付/删除/发送/发布/账户安全、文件传输）会弹确认，agent 无权自确认。
-- 不读取密码字段、Cookie、账号凭据；不绕过验证码/付费墙。
-- 只操作用户自己已渲染在本机页面上的内容。
+- 高风险操作（支付/删除/发送/发布/账户安全、文件传输）会在受控浏览器自动打开确认页，由你批准；agent 无权自确认。
+- 不读取密码字段、不向外传输 Cookie/凭据；复制 Cookies 仅用于在本机重建你的登录态。
+- 不绕过验证码/付费墙；只操作用户自己已渲染在本机页面上的内容。

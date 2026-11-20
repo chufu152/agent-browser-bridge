@@ -1,7 +1,7 @@
-// Bridge 主入口 — 组装认证、会话、去重、审计、确认、事件、路由、WebSocket 与 Native Messaging。
+// Bridge 主入口 — 组装认证、会话、去重、审计、确认、事件、路由、WebSocket 与 CDP 南向通道。
 
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { TokenManager } from './auth/index';
 import { SessionManager } from './session/index';
@@ -10,7 +10,8 @@ import { AuditLog } from './audit/index';
 import { ConfirmationManager } from './confirm/index';
 import { EventBus } from './events/index';
 import { JsonRpcRouter } from './router/index';
-import { NativeMessagingTransport } from './native-messaging/index';
+import { CdpTransport } from './cdp/index';
+import { startConfirmUI } from './confirm-ui/index';
 import { createWebSocketServer, type WebSocketServerHandle } from './websocket/server';
 import type { ExtensionTransport } from './transport/index';
 import type { EventEnvelope } from './events/index';
@@ -85,31 +86,31 @@ export function startBridge(opts: { host?: string; port?: number; verbose?: bool
   // 预授权 Agent：从配置文件导入 token（让外部 Agent 免交互接入）
   loadAgentsConfig().forEach((a) => bridge.tokens.register(a.agentId, a.token));
 
-  // 南向：Native Messaging
-  const nm = new NativeMessagingTransport();
-  nm.onDisconnect(() => bridge.setTransport(null));
-  bridge.setTransport(nm);
+  // 南向：CDP 直连浏览器（零扩展安装）。引擎脚本与 bridge 同目录分发。
+  const engineFile = resolveEngineFile();
+  const cdp = new CdpTransport({ engineFile });
+  let cdpAlive = false;
+  const probe = async () => {
+    const alive = await cdp.isAlive();
+    if (alive !== cdpAlive) {
+      cdpAlive = alive;
+      bridge.setTransport(alive ? cdp : null);
+      console.error(`[uba-bridge] CDP browser ${alive ? 'connected' : 'disconnected'}`);
+    }
+  };
+  probe();
+  const probeTimer = setInterval(probe, 3000);
 
-  // 本地管理员接口（扩展 popup 经原生消息调用，Agent 路由不可达）
-  nm.setAdminHandler((msg: any) => {
-    switch (msg.action) {
-      case 'listConfirmations':
-        return bridge.confirmations.listPending().map((c) => ({
-          confirmationId: c.confirmationId,
-          operationId: c.operationId,
-          method: c.method,
-          riskSummary: c.riskSummary,
-          createdAt: c.createdAt,
-          expiresAt: c.expiresAt
-        }));
-      case 'approve':
-        return { ok: bridge.approveConfirmation(msg.confirmationId, true) };
-      case 'deny':
-        return { ok: bridge.approveConfirmation(msg.confirmationId, false) };
-      case 'listAudit':
-        return bridge.audit.list();
-      default:
-        return { ok: false, error: 'unknown admin action' };
+  // 本地人工确认界面（高风险批准/拒绝，Agent 路由不可达）
+  const confirmUI = startConfirmUI({
+    confirmations: bridge.confirmations,
+    resolve: (id, approved) => bridge.approveConfirmation(id, approved)
+  });
+
+  // 高风险请求出现时，自动在受控浏览器打开确认页，用户无需记地址
+  bridge.events.onEmit((event: EventEnvelope) => {
+    if (event.data.eventType === 'operation.confirmationRequired' && cdpAlive) {
+      cdp.send({ method: 'browser.createTab', params: { url: confirmUI.url } }).catch(() => {});
     }
   });
 
@@ -127,22 +128,35 @@ export function startBridge(opts: { host?: string; port?: number; verbose?: bool
     }
   });
 
-  // 注意：日志一律走 stderr（console.error），stdout 只用于原生消息协议帧，
-  // 否则被浏览器作为原生消息 host 拉起时，stdout 混入日志会污染协议导致断管。
   if (opts.verbose !== false) {
     console.error(`[uba-bridge] WebSocket listening on ws://${host}:${port}`);
-    console.error('[uba-bridge] Native messaging channel on stdin/stdout');
+    console.error(`[uba-bridge] CDP endpoint: http://127.0.0.1:${process.env.UBA_CDP_PORT ?? 9222}`);
+    console.error(`[uba-bridge] confirm UI: ${confirmUI.url}`);
     console.error('[uba-bridge] registered agents:', bridge.tokens.listAgents().join(', ') || '(none)');
   }
 
   handle.server.on('error', (e) => console.error('[uba-bridge] websocket error', e));
 
-  // 覆盖 close 以关闭 WS
+  // 覆盖 close 以关闭 WS / 确认页 / 探活
   const origClose = bridge.close;
   bridge.close = () => {
+    clearInterval(probeTimer);
+    confirmUI.server.close();
     handle.server.close();
     origClose();
   };
 
   return bridge;
+}
+
+/** 页面引擎脚本定位：环境变量 → 与入口脚本同目录 → 仓库 dist/bin */
+function resolveEngineFile(): string {
+  if (process.env.UBA_ENGINE_FILE && existsSync(process.env.UBA_ENGINE_FILE)) return process.env.UBA_ENGINE_FILE;
+  const candidates = [
+    join(dirname(process.argv[1] ?? '.'), 'page-engine.js'),
+    join(process.cwd(), 'dist', 'bin', 'page-engine.js'),
+    join(process.cwd(), 'dist', 'zip', 'bin', 'page-engine.js')
+  ];
+  for (const c of candidates) if (existsSync(c)) return c;
+  return candidates[0];
 }
